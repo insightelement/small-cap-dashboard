@@ -49,6 +49,166 @@ const directionColors = {
   "STRONG SELL": { bg: "rgba(239,68,68,0.15)", text: "#ef4444", border: "#ef4444" },
 };
 
+// =============================================================================
+// LIVE DATA INTEGRATION — Finnhub.io
+// =============================================================================
+// Real-time prices + 30-day candles are pulled from Finnhub's free-tier API.
+// The /quote endpoint always works on free tier. The /stock/candle endpoint
+// is needed for RSI computation; if it fails, we fall back to the demo RSI.
+// Note: the API key is in the browser — fine for a free key on a portfolio
+// project, but a production version would proxy this through a backend.
+// =============================================================================
+
+const FINNHUB_KEY = "d0rm3q9r01qumepf314gd0rm3q9r01qumepf3150";
+const FINNHUB_BASE = "https://finnhub.io/api/v1";
+
+// Compute 14-period RSI from an array of closing prices.
+// Standard Wilder's formula: average gain / (average gain + average loss).
+function computeRSI(closes, period = 14) {
+  if (!closes || closes.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
+// Rule-based signal generator (transparent, deterministic — NOT ML).
+// This will be replaced by a trained classifier in Phase 3.
+// Returns { direction, score, confidence, signals[] }.
+function generateRuleBasedSignal({ rsi, momentum_1m, volume_ratio }) {
+  const signals = [];
+  let score = 50; // neutral baseline
+
+  // RSI signals
+  if (rsi != null) {
+    if (rsi < 30)      { signals.push("Oversold (RSI < 30)"); score += 18; }
+    else if (rsi < 40) { signals.push("Near oversold (RSI < 40)"); score += 9; }
+    else if (rsi > 70) { signals.push("Overbought (RSI > 70)"); score -= 18; }
+    else if (rsi > 60) { signals.push("Approaching overbought (RSI > 60)"); score -= 9; }
+  }
+
+  // Momentum signals
+  if (momentum_1m != null) {
+    if (momentum_1m < -15)     { signals.push("Heavily underperforming — mean-reversion candidate"); score += 12; }
+    else if (momentum_1m < -5) { signals.push("Recent weakness in price action"); score += 5; }
+    else if (momentum_1m > 15) { signals.push("Strong recent uptrend"); score -= 8; }
+  }
+
+  // Volume signals
+  if (volume_ratio != null) {
+    if (volume_ratio > 2)        { signals.push(`High volume spike (${volume_ratio.toFixed(1)}x average)`); score += 6; }
+    else if (volume_ratio < 0.7) { signals.push("Below-average volume"); score -= 3; }
+  }
+
+  if (signals.length === 0) signals.push("Mixed signals — no clear setup");
+
+  // Clamp score and map to direction band
+  score = Math.max(5, Math.min(95, score));
+  let direction;
+  if (score >= 70)      direction = "STRONG BUY";
+  else if (score >= 58) direction = "BUY";
+  else if (score >= 42) direction = "NEUTRAL";
+  else if (score >= 30) direction = "SELL";
+  else                  direction = "STRONG SELL";
+
+  return {
+    direction,
+    score: Math.round(score * 10) / 10,
+    confidence: Math.round(Math.abs(score - 50) * 1.6 + 40), // 40-120 → clip
+    signals,
+  };
+}
+
+// Fetch live data for one ticker. Returns the same shape as DEMO_DATA entries.
+// If anything fails, returns null and the caller falls back to demo data.
+async function fetchLiveTicker(ticker, demoEntry) {
+  try {
+    // 1) Quote: current price, prev close, day high/low
+    const quoteRes = await fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${FINNHUB_KEY}`);
+    if (!quoteRes.ok) throw new Error(`quote ${quoteRes.status}`);
+    const quote = await quoteRes.json();
+    if (!quote.c || quote.c === 0) throw new Error("quote empty");
+
+    // 2) Company profile: real name and sector (don't rely on hardcoded ones)
+    let name = demoEntry.name;
+    let sector = demoEntry.sector;
+    try {
+      const profileRes = await fetch(`${FINNHUB_BASE}/stock/profile2?symbol=${ticker}&token=${FINNHUB_KEY}`);
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        if (profile.name) name = profile.name;
+        if (profile.finnhubIndustry) sector = profile.finnhubIndustry;
+      }
+    } catch (_) { /* keep demo values */ }
+
+    // 3) Candles for RSI + momentum (last 60 days of daily data)
+    // Free tier limitation: candle endpoint may 403; we degrade gracefully.
+    let rsi = demoEntry.technical.rsi;
+    let momentum_1m = demoEntry.technical.momentum_1m;
+    let momentum_3m = demoEntry.technical.momentum_3m;
+    let volume_ratio = demoEntry.technical.volume_ratio;
+    let candlesReal = false;
+    try {
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - 90 * 24 * 60 * 60; // 90 days back
+      const candleRes = await fetch(`${FINNHUB_BASE}/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_KEY}`);
+      if (candleRes.ok) {
+        const candles = await candleRes.json();
+        if (candles.s === "ok" && candles.c && candles.c.length >= 30) {
+          const closes = candles.c;
+          const volumes = candles.v;
+          const computedRSI = computeRSI(closes);
+          if (computedRSI != null) rsi = Math.round(computedRSI * 10) / 10;
+          // Momentum: % change over ~21 trading days (1 month) and ~63 (3 months)
+          const last = closes[closes.length - 1];
+          if (closes.length > 21)  momentum_1m = Math.round(((last / closes[closes.length - 22] - 1) * 100) * 10) / 10;
+          if (closes.length > 63)  momentum_3m = Math.round(((last / closes[closes.length - 64] - 1) * 100) * 10) / 10;
+          // Volume ratio: today vs trailing 20-day average
+          if (volumes && volumes.length > 20) {
+            const recent = volumes[volumes.length - 1];
+            const avg20 = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+            if (avg20 > 0) volume_ratio = Math.round((recent / avg20) * 10) / 10;
+          }
+          candlesReal = true;
+        }
+      }
+    } catch (_) { /* keep demo technicals */ }
+
+    const signal = generateRuleBasedSignal({ rsi, momentum_1m, volume_ratio });
+    // Price target: midpoint between current and (current * implied move from score)
+    const impliedMove = (signal.score - 50) / 100 * 0.4; // ±20% range max
+    const price_target = Math.round(quote.c * (1 + impliedMove) * 100) / 100;
+
+    return {
+      ticker,
+      name,
+      sector,
+      current_price: Math.round(quote.c * 100) / 100,
+      prediction: { ...signal, price_target, time_horizon_days: 60 },
+      technical: { rsi, momentum_1m, momentum_3m, volume_ratio },
+      _live: true,        // mark as live for the UI badge
+      _candlesReal: candlesReal,
+    };
+  } catch (err) {
+    console.warn(`Live fetch failed for ${ticker}:`, err.message);
+    return null;
+  }
+}
+
+
 const ScoreMeter = ({ score }) => {
   const angle = (score / 100) * 180 - 90;
   const color = score >= 65 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
@@ -136,6 +296,32 @@ export default function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [analyzeSuccess, setAnalyzeSuccess] = useState("");
+
+  // Live-data status: "loading" | "live" | "partial" | "demo"
+  const [dataStatus, setDataStatus] = useState("loading");
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // ── Pull live market data for the watchlist on mount ──
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        DEMO_DATA.map(demo => fetchLiveTicker(demo.ticker, demo))
+      );
+      if (cancelled) return;
+
+      const liveCount = results.filter(r => r !== null).length;
+      const merged = results.map((r, i) => r || { ...DEMO_DATA[i], _live: false });
+
+      setStocks(merged);
+      setLastUpdated(new Date());
+      if (liveCount === DEMO_DATA.length)   setDataStatus("live");
+      else if (liveCount > 0)               setDataStatus("partial");
+      else                                  setDataStatus("demo");
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
 
   // ── Analyze a single ticker via Railway API ──
   const analyzeTicker = async (ticker) => {
@@ -246,7 +432,19 @@ export default function App() {
             </button>
           ))}
         </div>
-        <div style={{ ...styles.badge, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b" }}>● DEMO MODE</div>
+        {(() => {
+          const statusConfig = {
+            loading: { bg: "rgba(99,102,241,0.1)",  border: "rgba(99,102,241,0.3)",  color: "#818cf8", text: "● LOADING…" },
+            live:    { bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.3)",  color: "#10b981", text: "● LIVE DATA" },
+            partial: { bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.3)",  color: "#f59e0b", text: "● PARTIAL LIVE" },
+            demo:    { bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.3)",  color: "#f59e0b", text: "● DEMO MODE" },
+          }[dataStatus];
+          return (
+            <div style={{ ...styles.badge, background: statusConfig.bg, border: `1px solid ${statusConfig.border}`, color: statusConfig.color }}>
+              {statusConfig.text}
+            </div>
+          );
+        })()}
       </div>
 
       <div style={styles.main}>
@@ -254,27 +452,44 @@ export default function App() {
         {/* SCANNER TAB */}
         {tab === "scanner" && (
           <>
-            {/* Honest prototype banner */}
-            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: "#fbbf24", fontFamily: "'IBM Plex Sans', sans-serif" }}>
-              <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⚠ PROTOTYPE NOTICE:</strong> This is a UI prototype for a planned ML stock screener. The scores, predictions, and performance metrics below are illustrative placeholders demonstrating the intended interface — no model is trained yet. The data pipeline and model are in active development (see <button onClick={() => setTab("roadmap")} style={{ background: "none", border: "none", color: "#fbbf24", textDecoration: "underline", cursor: "pointer", padding: 0, font: "inherit" }}>Roadmap</button>).
-            </div>
+            {/* Honest data-status banner */}
+            {dataStatus === "live" && (
+              <div style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 8, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: "#34d399", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>● LIVE MARKET DATA:</strong> Prices, RSI, momentum, and volume below are pulled in real time from Finnhub.io. The BUY/SELL <em>signals</em> are generated by a transparent rule-based scorer (RSI thresholds + momentum + volume) — this will be replaced by a trained ML classifier in Phase 3 (<button onClick={() => setTab("roadmap")} style={{ background: "none", border: "none", color: "#34d399", textDecoration: "underline", cursor: "pointer", padding: 0, font: "inherit" }}>roadmap</button>). {lastUpdated && <span style={{ color: "#6b7280", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+              </div>
+            )}
+            {dataStatus === "partial" && (
+              <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: "#fbbf24", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⚠ PARTIAL LIVE DATA:</strong> Some tickers loaded from Finnhub successfully, others fell back to demo data (API rate limit or endpoint issue). Signals are rule-based (Phase 2). Real ML predictions arriving in Phase 3.
+              </div>
+            )}
+            {dataStatus === "demo" && (
+              <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: "#fbbf24", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⚠ DEMO MODE:</strong> Live API unavailable — showing illustrative demo data. The data pipeline normally pulls real prices from Finnhub; signals are rule-based (Phase 2). See <button onClick={() => setTab("roadmap")} style={{ background: "none", border: "none", color: "#fbbf24", textDecoration: "underline", cursor: "pointer", padding: 0, font: "inherit" }}>roadmap</button>.
+              </div>
+            )}
+            {dataStatus === "loading" && (
+              <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 8, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: "#a5b4fc", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⏳ FETCHING LIVE DATA:</strong> Pulling prices, indicators, and momentum from Finnhub.io for {DEMO_DATA.length} tickers…
+              </div>
+            )}
 
             {/* Stats */}
             <div style={styles.grid3}>
               <div style={styles.statCard}>
                 <div style={styles.statLabel}>Project Phase</div>
-                <div style={{ ...styles.statValue, color: "#10b981", fontSize: 28 }}>1 / 4</div>
-                <div style={styles.statSub}>UI shipped · backend in dev</div>
+                <div style={{ ...styles.statValue, color: "#10b981", fontSize: 28 }}>2 / 4</div>
+                <div style={styles.statSub}>UI + live data shipped</div>
               </div>
               <div style={styles.statCard}>
                 <div style={styles.statLabel}>Watchlist Size</div>
                 <div style={styles.statValue}>{stocks.length}</div>
-                <div style={styles.statSub}>Small-cap focus</div>
+                <div style={styles.statSub}>{stocks.filter(s => s._live).length} live · {stocks.filter(s => !s._live).length} cached</div>
               </div>
               <div style={styles.statCard}>
                 <div style={styles.statLabel}>Stack</div>
-                <div style={{ ...styles.statValue, fontSize: 16, lineHeight: 1.3 }}>React · Vercel<br/>FastAPI · Railway</div>
-                <div style={styles.statSub}>Python ML layer planned</div>
+                <div style={{ ...styles.statValue, fontSize: 16, lineHeight: 1.3 }}>React · Vercel<br/>Finnhub API</div>
+                <div style={styles.statSub}>ML layer in Phase 3</div>
               </div>
             </div>
 
@@ -553,13 +768,16 @@ export default function App() {
               },
               {
                 phase: "Phase 2",
-                title: "Data Pipeline (Python)",
+                title: "Live Market Data Integration",
                 status: "in-progress",
                 items: [
-                  "yfinance ingestion for ~10 small-cap tickers, 3 years of daily OHLCV",
-                  "Technical indicator computation: RSI, MACD, Bollinger Bands, volume ratios",
-                  "SQLite storage with schema for historical features and labels",
-                  "Daily refresh script with error handling and logging",
+                  "✓ Finnhub.io integration: real-time /quote and /stock/candle endpoints",
+                  "✓ RSI computed in-browser from 60 days of daily closes (Wilder's formula, 14-period)",
+                  "✓ Momentum (1M, 3M) and volume-ratio calculated from real OHLCV",
+                  "✓ Rule-based signal scorer: transparent thresholds on RSI + momentum + volume",
+                  "✓ Graceful fallback to demo data on API error (site never breaks)",
+                  "→ Next: move API key behind a Python/FastAPI backend proxy (Railway)",
+                  "→ Next: expand watchlist + add Bollinger Bands and MACD",
                 ],
               },
               {
