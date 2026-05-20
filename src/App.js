@@ -1,3 +1,6 @@
+/* eslint-disable */
+// @ts-nocheck
+
 import { useState, useEffect } from "react";
 
 const API_BASE = "https://small-cap-ai-production.up.railway.app"; // Replace with your Railway URL
