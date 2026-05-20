@@ -5,7 +5,15 @@ import { useState, useEffect } from "react";
 
 const API_BASE = "https://small-cap-ai-production.up.railway.app"; // Replace with your Railway URL
 
-const MOCK_DATA = [
+// =============================================================================
+// ⚠️  ILLUSTRATIVE DEMO DATA — NOT A REAL MODEL OUTPUT
+// =============================================================================
+// The values below are hard-coded for UI preview purposes only.
+// The ML model that will generate real predictions is in active development.
+// See the "Roadmap" tab for project phases.
+// =============================================================================
+
+const DEMO_DATA = [
   { ticker: "UPST", name: "Upstart Holdings", sector: "Financial Services", current_price: 28.42, prediction: { direction: "STRONG BUY", score: 78.4, confidence: 82, signals: ["Oversold (RSI < 30)", "Near lower Bollinger Band", "Deeply underperforming — mean reversion candidate", "Trading below book value (P/B: 0.87)"], price_target: 34.20, time_horizon_days: 60 }, technical: { rsi: 27.3, momentum_1m: -18.4, momentum_3m: -31.2, volume_ratio: 2.4 } },
   { ticker: "IONQ", name: "IonQ Inc", sector: "Technology", current_price: 14.87, prediction: { direction: "BUY", score: 65.2, confidence: 65, signals: ["Bullish MACD crossover", "High volume spike (2.1x average)", "Strong revenue growth (34.2%)"], price_target: 17.80, time_horizon_days: 60 }, technical: { rsi: 43.1, momentum_1m: -8.2, momentum_3m: -12.4, volume_ratio: 2.1 } },
   { ticker: "SOFI", name: "SoFi Technologies", sector: "Financial Services", current_price: 7.23, prediction: { direction: "BUY", score: 61.8, confidence: 61, signals: ["Near oversold (RSI < 40)", "Favorable macro environment", "Strong revenue growth (26.1%)"], price_target: 8.65, time_horizon_days: 60 }, technical: { rsi: 38.4, momentum_1m: -5.1, momentum_3m: -9.8, volume_ratio: 1.3 } },
@@ -13,7 +21,7 @@ const MOCK_DATA = [
   { ticker: "NKLA", name: "Nikola Corporation", sector: "Industrials", current_price: 1.02, prediction: { direction: "SELL", score: 32.1, confidence: 36, signals: ["Declining revenue", "High price-to-book ratio", "Bearish MACD momentum"], price_target: 0.82, time_horizon_days: 60 }, technical: { rsi: 62.3, momentum_1m: 14.2, momentum_3m: -28.4, volume_ratio: 0.7 } },
 ];
 
-const MOCK_PERFORMANCE = {
+const DEMO_PERFORMANCE = {
   total_predictions: 147,
   correct: 96,
   accuracy_pct: 65.3,
@@ -119,8 +127,8 @@ const AccuracyChart = ({ history }) => {
 
 export default function App() {
   const [tab, setTab] = useState("scanner");
-  const [stocks, setStocks] = useState(MOCK_DATA);
-  const [performance, setPerformance] = useState(MOCK_PERFORMANCE);
+  const [stocks, setStocks] = useState(DEMO_DATA);
+  const [performance, setPerformance] = useState(DEMO_PERFORMANCE);
   const [selected, setSelected] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [customTicker, setCustomTicker] = useState("");
@@ -223,17 +231,22 @@ export default function App() {
 
       {/* Header */}
       <div style={styles.header}>
-        <div style={styles.logo}>
-          Small<span style={styles.logoAccent}>Cap</span>.AI
+        <div>
+          <div style={styles.logo}>
+            Small<span style={styles.logoAccent}>Cap</span>.AI
+          </div>
+          <div style={{ fontSize: 10, color: "#4b5563", marginTop: 2, fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>
+            ML STOCK SCREENER · UI PROTOTYPE
+          </div>
         </div>
         <div style={styles.nav}>
-          {["scanner", "predictions", "performance"].map(t => (
+          {["scanner", "predictions", "performance", "roadmap"].map(t => (
             <button key={t} style={styles.navBtn(tab === t)} onClick={() => setTab(t)}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
-        <div style={styles.badge}>● LIVE</div>
+        <div style={{ ...styles.badge, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b" }}>● DEMO MODE</div>
       </div>
 
       <div style={styles.main}>
@@ -241,22 +254,27 @@ export default function App() {
         {/* SCANNER TAB */}
         {tab === "scanner" && (
           <>
+            {/* Honest prototype banner */}
+            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: "#fbbf24", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⚠ PROTOTYPE NOTICE:</strong> This is a UI prototype for a planned ML stock screener. The scores, predictions, and performance metrics below are illustrative placeholders demonstrating the intended interface — no model is trained yet. The data pipeline and model are in active development (see <button onClick={() => setTab("roadmap")} style={{ background: "none", border: "none", color: "#fbbf24", textDecoration: "underline", cursor: "pointer", padding: 0, font: "inherit" }}>Roadmap</button>).
+            </div>
+
             {/* Stats */}
             <div style={styles.grid3}>
               <div style={styles.statCard}>
-                <div style={styles.statLabel}>Model Accuracy</div>
-                <div style={{ ...styles.statValue, color: "#10b981" }}>{performance.accuracy_pct}%</div>
-                <div style={styles.statSub}>↑ +4.2% this month</div>
+                <div style={styles.statLabel}>Project Phase</div>
+                <div style={{ ...styles.statValue, color: "#10b981", fontSize: 28 }}>1 / 4</div>
+                <div style={styles.statSub}>UI shipped · backend in dev</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statLabel}>Predictions Made</div>
-                <div style={styles.statValue}>{performance.total_predictions}</div>
-                <div style={styles.statSub}>{performance.correct} correct outcomes</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statLabel}>Stocks Tracked</div>
+                <div style={styles.statLabel}>Watchlist Size</div>
                 <div style={styles.statValue}>{stocks.length}</div>
-                <div style={styles.statSub}>Updated weekly · auto-retrain</div>
+                <div style={styles.statSub}>Small-cap focus</div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={styles.statLabel}>Stack</div>
+                <div style={{ ...styles.statValue, fontSize: 16, lineHeight: 1.3 }}>React · Vercel<br/>FastAPI · Railway</div>
+                <div style={styles.statSub}>Python ML layer planned</div>
               </div>
             </div>
 
@@ -412,7 +430,11 @@ export default function App() {
         {/* PREDICTIONS TAB */}
         {tab === "predictions" && (
           <>
-            <div style={styles.sectionTitle}>Recent Predictions & Outcomes</div>
+            {/* Prominent demo banner */}
+            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "14px 18px", marginBottom: 20, fontSize: 13, color: "#fbbf24", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⚠ ILLUSTRATIVE DATA:</strong> The predictions and outcomes below are hand-crafted examples showing the intended UI layout for tracking model predictions vs. actual market outcomes. No real predictions have been made yet — the ML model is in development (Phase 3 of the <button onClick={() => setTab("roadmap")} style={{ background: "none", border: "none", color: "#fbbf24", textDecoration: "underline", cursor: "pointer", padding: 0, font: "inherit" }}>roadmap</button>).
+            </div>
+            <div style={styles.sectionTitle}>Recent Predictions & Outcomes (Demo Layout)</div>
             <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 12, overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
@@ -448,7 +470,7 @@ export default function App() {
               </table>
             </div>
             <div style={{ marginTop: 12, fontSize: 12, color: "#374151", textAlign: "center" }}>
-              Showing demo data. Connect to Railway API to see live predictions.
+              UI mockup · live predictions arriving in Phase 3
             </div>
           </>
         )}
@@ -456,21 +478,28 @@ export default function App() {
         {/* PERFORMANCE TAB */}
         {tab === "performance" && (
           <>
+            {/* Prominent illustrative banner */}
+            <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "14px 18px", marginBottom: 20, fontSize: 13, color: "#fb7185", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+              <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em" }}>⚠ UI PREVIEW ONLY — NOT REAL BACKTEST RESULTS:</strong> The metrics on this page demonstrate how model performance <em>will</em> be tracked once the ML pipeline is built. The 65.3% accuracy figure, retraining history, and signal-type breakdown are illustrative placeholders. Real performance metrics will be generated using walk-forward validation on out-of-sample data (Phase 3).
+            </div>
+
+            <div style={styles.sectionTitle}>Planned Performance Tracking · UI Preview</div>
+
             <div style={styles.grid3}>
               <div style={styles.statCard}>
-                <div style={styles.statLabel}>Overall Accuracy</div>
+                <div style={styles.statLabel}>Overall Accuracy <span style={{ color: "#f59e0b", fontSize: 9 }}>(DEMO)</span></div>
                 <div style={{ ...styles.statValue, color: "#10b981" }}>{performance.accuracy_pct}%</div>
-                <div style={styles.statSub}>{performance.correct} / {performance.total_predictions} correct</div>
+                <div style={styles.statSub}>{performance.correct} / {performance.total_predictions} (illustrative)</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statLabel}>Best Signal</div>
+                <div style={styles.statLabel}>Best Signal <span style={{ color: "#f59e0b", fontSize: 9 }}>(DEMO)</span></div>
                 <div style={{ ...styles.statValue, fontSize: 22, color: "#818cf8" }}>STRONG BUY</div>
-                <div style={styles.statSub}>{performance.by_direction["STRONG BUY"].accuracy}% accuracy</div>
+                <div style={styles.statSub}>{performance.by_direction["STRONG BUY"].accuracy}% (illustrative)</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statLabel}>Model Retrains</div>
+                <div style={styles.statLabel}>Model Retrains <span style={{ color: "#f59e0b", fontSize: 9 }}>(DEMO)</span></div>
                 <div style={styles.statValue}>{performance.retraining_history.length}</div>
-                <div style={styles.statSub}>Last: {new Date(performance.retraining_history[0].trained_at).toLocaleDateString()}</div>
+                <div style={styles.statSub}>Weekly cadence planned</div>
               </div>
             </div>
 
@@ -478,12 +507,12 @@ export default function App() {
             <div style={{ ...styles.statCard, marginBottom: 20 }}>
               <div style={styles.sectionTitle}>Model Accuracy Over Time (Weekly Retrains)</div>
               <AccuracyChart history={performance.retraining_history} />
-              <div style={{ marginTop: 12, fontSize: 12, color: "#4b5563" }}>Each point = a model retrain after evaluating new prediction outcomes</div>
+              <div style={{ marginTop: 12, fontSize: 12, color: "#4b5563" }}>Demo trajectory · real retrain history will populate this chart in Phase 3</div>
             </div>
 
             {/* By direction */}
             <div style={styles.statCard}>
-              <div style={styles.sectionTitle}>Accuracy by Signal Type</div>
+              <div style={styles.sectionTitle}>Accuracy by Signal Type (Illustrative)</div>
               {Object.entries(performance.by_direction).map(([dir, stats]) => (
                 <div key={dir} style={{ marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
@@ -495,6 +524,104 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </div>
+          </>
+        )}
+
+        {/* ROADMAP TAB */}
+        {tab === "roadmap" && (
+          <>
+            <div style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 8, padding: "16px 20px", marginBottom: 24, fontSize: 13, color: "#a5b4fc", fontFamily: "'IBM Plex Sans', sans-serif", lineHeight: 1.6 }}>
+              <strong style={{ fontFamily: "'Space Mono', monospace", letterSpacing: "0.05em", color: "#818cf8" }}>ABOUT THIS PROJECT</strong><br/>
+              SmallCap.AI is a personal project building an end-to-end ML stock screener for small-cap equities. The frontend (this dashboard) is shipped and deployed. The data pipeline, ML model, and live prediction service are in active development. This page tracks honest progress against the planned architecture.
+            </div>
+
+            <div style={styles.sectionTitle}>Project Phases</div>
+
+            {[
+              {
+                phase: "Phase 1",
+                title: "Frontend Dashboard",
+                status: "shipped",
+                items: [
+                  "React + Create React App scaffold",
+                  "Custom data visualisations (score meters, sparklines, signal bars)",
+                  "Three-tab layout: Scanner, Predictions, Performance",
+                  "Production deployment on Vercel with auto-deploy from main",
+                  "Responsive financial-terminal aesthetic (IBM Plex Sans + Space Mono)",
+                ],
+              },
+              {
+                phase: "Phase 2",
+                title: "Data Pipeline (Python)",
+                status: "in-progress",
+                items: [
+                  "yfinance ingestion for ~10 small-cap tickers, 3 years of daily OHLCV",
+                  "Technical indicator computation: RSI, MACD, Bollinger Bands, volume ratios",
+                  "SQLite storage with schema for historical features and labels",
+                  "Daily refresh script with error handling and logging",
+                ],
+              },
+              {
+                phase: "Phase 3",
+                title: "ML Model + Backend API",
+                status: "planned",
+                items: [
+                  "FastAPI backend deployed on Railway",
+                  "Baseline classifier: XGBoost predicting 5-day directional move",
+                  "Walk-forward validation (train rolling, test forward)",
+                  "Honest accuracy reporting — no leakage, no cherry-picked windows",
+                  "/analyze/{ticker} and /scan endpoints feeding the dashboard live",
+                ],
+              },
+              {
+                phase: "Phase 4",
+                title: "Live Predictions + Tracking",
+                status: "planned",
+                items: [
+                  "Weekly automated prediction generation logged to database",
+                  "Outcome tracking after holding period elapses",
+                  "Real performance metrics populating the Performance tab",
+                  "Equity curve: model signals vs SPY benchmark",
+                ],
+              },
+            ].map((p, i) => {
+              const statusColors = {
+                shipped:      { bg: "rgba(16,185,129,0.12)", border: "#10b981", text: "#10b981", label: "✓ SHIPPED" },
+                "in-progress":{ bg: "rgba(245,158,11,0.12)", border: "#f59e0b", text: "#f59e0b", label: "⚡ IN PROGRESS" },
+                planned:      { bg: "rgba(99,102,241,0.08)", border: "#374151", text: "#6b7280", label: "○ PLANNED" },
+              };
+              const sc = statusColors[p.status];
+              return (
+                <div key={p.phase} style={{ background: "#0d1117", border: `1px solid ${p.status === "shipped" ? "#10b981" : p.status === "in-progress" ? "rgba(245,158,11,0.4)" : "#1f2937"}`, borderRadius: 12, padding: "20px 24px", marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#4b5563", fontFamily: "'Space Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>{p.phase}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#f9fafb", fontFamily: "'Space Mono', monospace", marginTop: 4 }}>{p.title}</div>
+                    </div>
+                    <div style={{ background: sc.bg, border: `1px solid ${sc.border}`, color: sc.text, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontFamily: "'Space Mono', monospace", fontWeight: 600 }}>
+                      {sc.label}
+                    </div>
+                  </div>
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                    {p.items.map((item, j) => (
+                      <li key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "6px 0", fontSize: 13, color: "#9ca3af" }}>
+                        <span style={{ color: sc.text, marginTop: 2, fontFamily: "'Space Mono', monospace", fontSize: 11 }}>
+                          {p.status === "shipped" ? "✓" : p.status === "in-progress" ? "→" : "○"}
+                        </span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+
+            <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 12, padding: "20px 24px", marginTop: 20 }}>
+              <div style={styles.sectionTitle}>Why I'm Building This</div>
+              <div style={{ fontSize: 13, color: "#9ca3af", lineHeight: 1.7 }}>
+                I'm interested in small-cap and micro-cap equities, particularly in semiconductors and emerging tech. Most retail screening tools are either too generic or hide their methodology behind a paywall. This project is my attempt to build an end-to-end pipeline I actually understand — from data ingestion to model training to live serving — while learning Python data analysis and deployment skills along the way. The frontend came first because the visual design helps me think about what the model output <em>should</em> look like; the model comes next.
+              </div>
             </div>
           </>
         )}
